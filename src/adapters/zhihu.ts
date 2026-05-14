@@ -61,9 +61,7 @@ function cleanQuestionDescription(value?: string): string | undefined {
 		return undefined;
 	}
 	const cleaned = value
-		.replace(/显示全部\s*$/g, "")
-		.replace(/显示更多\s*$/g, "")
-		.replace(/阅读全文\s*$/g, "")
+		.replace(/(显示全部|显示更多|阅读全文)[\s\u200b\u200c\u200d\ufeff\xa0]*$/g, "")
 		.trim();
 	return cleaned || undefined;
 }
@@ -476,7 +474,7 @@ function postProcessMarkdown(markdown: string): string {
 	const filtered: string[] = [];
 
 	for (const line of lines) {
-		const trimmed = line.trim();
+		const trimmed = line.trim().replace(/(显示全部|显示更多|阅读全文)[\s\u200b\u200c\u200d\ufeff\xa0]*$/g, "").trim();
 		if (!trimmed) {
 			filtered.push("");
 			continue;
@@ -484,7 +482,7 @@ function postProcessMarkdown(markdown: string): string {
 		if (looksLikeCssNoise(trimmed) && !trimmed.startsWith("![")) {
 			continue;
 		}
-		filtered.push(line);
+		filtered.push(trimmed === line.trim() ? line : line.replace(/(显示全部|显示更多|阅读全文)[\s\u200b\u200c\u200d\ufeff\xa0]*$/g, "").replace(/\s+$/g, ""));
 	}
 
 	return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
