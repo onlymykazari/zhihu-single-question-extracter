@@ -13,6 +13,24 @@ interface ZhihuPayload {
 	updatedAt?: string;
 }
 
+interface ZhihuApiAnswer {
+	content?: string;
+	excerpt?: string;
+	excerpt_new?: string;
+	created_time?: number | string;
+	updated_time?: number | string;
+	author?: {
+		name?: string;
+		url?: string;
+	};
+	question?: {
+		id?: number | string;
+		title?: string;
+		detail?: string;
+		excerpt?: string;
+	};
+}
+
 function textFromElement(root: ParentNode, selector: string): string | undefined {
 	const element = root.querySelector(selector);
 	return element?.textContent?.trim() || undefined;
@@ -43,6 +61,22 @@ function parseInitialState(html: string): unknown | null {
 	}
 
 	return null;
+}
+
+function sanitizeCookie(rawCookie?: string): string | undefined {
+	if (!rawCookie) {
+		return undefined;
+	}
+
+	const withoutPrefix = rawCookie.replace(/^cookie\s*:\s*/i, "");
+	const normalized = withoutPrefix
+		.replace(/\r?\n+/g, " ")
+		.split(";")
+		.map((segment) => segment.trim())
+		.filter(Boolean)
+		.join("; ");
+
+	return normalized || undefined;
 }
 
 function pickRecord<T extends Record<string, unknown>>(collection: unknown, key: string): T | null {
@@ -96,6 +130,73 @@ function toIso(value: unknown): string | undefined {
 		return value;
 	}
 	return undefined;
+}
+
+function buildHeaders(cookie?: string): Record<string, string> {
+	const headers: Record<string, string> = {
+		"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+		Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7",
+		"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+		"Cache-Control": "no-cache",
+		Pragma: "no-cache",
+		Referer: "https://www.zhihu.com/",
+		"Upgrade-Insecure-Requests": "1"
+	};
+
+	if (cookie) {
+		headers.Cookie = cookie;
+	}
+
+	return headers;
+}
+
+async function fetchText(url: string, headers: Record<string, string>, timeoutMs: number): Promise<string> {
+	const response = await withTimeout(requestUrl({
+		url,
+		method: "GET",
+		headers,
+		throw: false
+	}), timeoutMs);
+
+	if (response.status >= 400) {
+		throw new Error(`HTTP_${response.status}`);
+	}
+
+	return response.text;
+}
+
+async function fetchJson<T>(url: string, headers: Record<string, string>, timeoutMs: number): Promise<T> {
+	const response = await withTimeout(requestUrl({
+		url,
+		method: "GET",
+		headers: {
+			...headers,
+			Accept: "application/json,text/plain,*/*"
+		},
+		throw: false
+	}), timeoutMs);
+
+	if (response.status >= 400) {
+		throw new Error(`HTTP_${response.status}`);
+	}
+
+	return response.json as T;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timeoutId = window.setTimeout(() => {
+			reject(new Error(`HTTP_TIMEOUT_${timeoutMs}`));
+		}, timeoutMs);
+
+		promise.then((value) => {
+			window.clearTimeout(timeoutId);
+			resolve(value);
+		}).catch((error) => {
+			window.clearTimeout(timeoutId);
+			reject(error);
+		});
+	});
 }
 
 function imageUrlFromElement(element: Element): string | null {
@@ -212,6 +313,45 @@ function fromDom(html: string): ZhihuPayload | null {
 	};
 }
 
+function fromAnswerApi(answer: ZhihuApiAnswer): ZhihuPayload | null {
+	const answerHtml = String(answer.content ?? answer.excerpt_new ?? answer.excerpt ?? "");
+	const questionTitle = String(answer.question?.title ?? "");
+	if (!questionTitle || !answerHtml) {
+		return null;
+	}
+
+	return {
+		questionTitle,
+		questionDescription: String(answer.question?.detail ?? answer.question?.excerpt ?? ""),
+		answerHtml,
+		authorName: answer.author?.name,
+		authorUrl: answer.author?.url ? `https://www.zhihu.com${answer.author.url}` : undefined,
+		publishedAt: toIso(answer.created_time),
+		updatedAt: toIso(answer.updated_time)
+	};
+}
+
+function toUserFacingError(error: unknown, hasCookie: boolean): Error {
+	const message = error instanceof Error ? error.message : String(error);
+	if (message === "HTTP_403") {
+		return new Error(
+			hasCookie
+				? "Zhihu returned 403 even with Cookie. The Cookie may be incomplete or expired, or Zhihu blocked this request path."
+				: "Zhihu returned 403. Anonymous requests are blocked; try enabling Cookie in advanced settings."
+		);
+	}
+
+	if (message.includes("ERR_SOCKET_NOT_CONNECTED")) {
+		return new Error("Network socket failed while sending the request. This is often caused by a malformed Cookie header or a blocked connection.");
+	}
+
+	if (message.startsWith("HTTP_TIMEOUT_")) {
+		return new Error("Zhihu request timed out. The site may be throttling this request or the connection is unstable.");
+	}
+
+	return error instanceof Error ? error : new Error(message);
+}
+
 export class ZhihuAdapter implements SourceAdapter {
 	readonly sourceType = "zhihu" as const;
 
@@ -225,30 +365,34 @@ export class ZhihuAdapter implements SourceAdapter {
 			throw new Error("Invalid Zhihu answer URL");
 		}
 
-		const headers: Record<string, string> = {
-			"User-Agent": "Mozilla/5.0",
-			Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-			"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-			Referer: "https://www.zhihu.com/"
-		};
-		if (context.cookie) {
-			headers.Cookie = context.cookie;
+		const cookie = sanitizeCookie(context.cookie);
+		const headers = buildHeaders(cookie);
+		let payload: ZhihuPayload | null = null;
+
+		try {
+			const html = await fetchText(url, headers, context.timeoutMs);
+			const state = parseInitialState(html);
+			payload = fromState(state, match.answerId) ?? fromDom(html);
+		} catch (error) {
+			if (!(error instanceof Error) || error.message !== "HTTP_403") {
+				try {
+					const apiUrl = `https://www.zhihu.com/api/v4/answers/${match.answerId}?include=content,excerpt,excerpt_new,created_time,updated_time,author.name,author.url,question.title,question.excerpt,question.detail`;
+					const apiAnswer = await fetchJson<ZhihuApiAnswer>(apiUrl, headers, context.timeoutMs);
+					payload = fromAnswerApi(apiAnswer);
+				} catch (apiError) {
+					throw toUserFacingError(apiError, Boolean(cookie));
+				}
+			} else {
+				try {
+					const apiUrl = `https://www.zhihu.com/api/v4/answers/${match.answerId}?include=content,excerpt,excerpt_new,created_time,updated_time,author.name,author.url,question.title,question.excerpt,question.detail`;
+					const apiAnswer = await fetchJson<ZhihuApiAnswer>(apiUrl, headers, context.timeoutMs);
+					payload = fromAnswerApi(apiAnswer);
+				} catch (apiError) {
+					throw toUserFacingError(apiError, Boolean(cookie));
+				}
+			}
 		}
 
-		const response = await requestUrl({
-			url,
-			method: "GET",
-			headers,
-			throw: false
-		});
-
-		if (response.status >= 400) {
-			throw new Error(`Zhihu request failed with status ${response.status}`);
-		}
-
-		const html = response.text;
-		const state = parseInitialState(html);
-		const payload = fromState(state, match.answerId) ?? fromDom(html);
 		if (!payload?.questionTitle || !payload.answerHtml) {
 			throw new Error("Unable to extract Zhihu answer content");
 		}
