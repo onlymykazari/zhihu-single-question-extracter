@@ -2,6 +2,7 @@ import {App, PluginSettingTab, Setting} from "obsidian";
 import {DEFAULT_ASSET_FOLDER, DEFAULT_DATE_FORMAT, DEFAULT_FILENAME_TEMPLATE, DEFAULT_IMPORT_FOLDER, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_TAGS, DEFAULT_USER_AGENT} from "./constants";
 import {getText} from "./i18n";
 import type ZhihuImporterPlugin from "./main";
+import {QrLoginModal} from "./modal/qr-login-modal";
 import type {PluginSettings} from "./types";
 import {parseTags} from "./utils/tags";
 
@@ -143,6 +144,27 @@ export class ZhihuImporterSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.cookie = value.trim();
 					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName(text.settingQrLoginName)
+			.setDesc(text.settingQrLoginDesc)
+			.addButton((button) => button
+				.setButtonText(text.settingQrLoginButton)
+				.setCta()
+				.onClick(() => {
+					new QrLoginModal(
+						this.app,
+						this.plugin.settings.locale,
+						this.plugin.settings.userAgent,
+						this.plugin.settings.requestTimeoutMs,
+						async (cookie) => {
+							this.plugin.settings.cookie = cookie;
+							this.plugin.settings.enableCookie = true;
+							await this.plugin.saveSettings();
+							this.display();
+						}
+					).open();
 				}));
 
 		new Setting(containerEl)

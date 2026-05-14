@@ -25,6 +25,9 @@ interface TextBundle {
 	settingCookieEnabledDesc: string;
 	settingCookieName: string;
 	settingCookieDesc: string;
+	settingQrLoginName: string;
+	settingQrLoginDesc: string;
+	settingQrLoginButton: string;
 	settingUserAgentName: string;
 	settingUserAgentDesc: string;
 	settingTimeoutName: string;
@@ -38,6 +41,14 @@ interface TextBundle {
 	modalCacheImagesDesc: string;
 	modalSubmit: string;
 	modalCancel: string;
+	qrLoginTitle: string;
+	qrLoginPreparing: string;
+	qrLoginWaiting: string;
+	qrLoginScanned: string;
+	qrLoginSuccess: string;
+	qrLoginExpired: string;
+	qrLoginCanceled: string;
+	qrLoginFailed: string;
 	noticeImporting: string;
 	noticeSuccess: string;
 	noticeFailure: string;
@@ -81,6 +92,9 @@ const BUNDLES: Record<ResolvedLocale, TextBundle> = {
 		settingCookieEnabledDesc: "用于辅助抓取受限内容。",
 		settingCookieName: "Cookie",
 		settingCookieDesc: "原始 Cookie 字符串，仅在启用 Cookie 时发送。",
+		settingQrLoginName: "知乎扫码登录",
+		settingQrLoginDesc: "使用知乎 App 扫码确认后，插件会自动保存 Cookie。",
+		settingQrLoginButton: "扫码登录",
 		settingUserAgentName: "User-Agent",
 		settingUserAgentDesc: "用于请求知乎页面的浏览器标识，可保留默认值或按需自定义。",
 		settingTimeoutName: "请求超时（毫秒）",
@@ -94,6 +108,14 @@ const BUNDLES: Record<ResolvedLocale, TextBundle> = {
 		modalCacheImagesDesc: "启用后下载图片到公共资源目录，否则保留外链。",
 		modalSubmit: "导入",
 		modalCancel: "取消",
+		qrLoginTitle: "知乎扫码登录",
+		qrLoginPreparing: "正在获取二维码...",
+		qrLoginWaiting: "请使用知乎 App 扫码并确认登录。",
+		qrLoginScanned: "已扫码，请在手机上确认登录。",
+		qrLoginSuccess: "知乎登录成功，Cookie 已保存。",
+		qrLoginExpired: "二维码已过期，请重新打开扫码登录。",
+		qrLoginCanceled: "扫码登录已取消。",
+		qrLoginFailed: "扫码登录失败：",
 		noticeImporting: "正在导入知乎回答...",
 		noticeSuccess: "导入完成：",
 		noticeFailure: "导入失败：",
@@ -135,6 +157,9 @@ const BUNDLES: Record<ResolvedLocale, TextBundle> = {
 		settingCookieEnabledDesc: "Send Cookie headers for restricted content.",
 		settingCookieName: "Cookie",
 		settingCookieDesc: "Raw Cookie string sent only when Cookie is enabled.",
+		settingQrLoginName: "Zhihu QR login",
+		settingQrLoginDesc: "Scan with the Zhihu app. The plugin saves Cookie after confirmation.",
+		settingQrLoginButton: "Scan to log in",
 		settingUserAgentName: "User-Agent",
 		settingUserAgentDesc: "Browser identifier used for Zhihu requests. Keep the default or override it if needed.",
 		settingTimeoutName: "Request timeout (ms)",
@@ -148,6 +173,14 @@ const BUNDLES: Record<ResolvedLocale, TextBundle> = {
 		modalCacheImagesDesc: "Download images to the shared asset folder instead of keeping remote links.",
 		modalSubmit: "Import",
 		modalCancel: "Cancel",
+		qrLoginTitle: "Zhihu QR login",
+		qrLoginPreparing: "Fetching QR code...",
+		qrLoginWaiting: "Scan with the Zhihu app and confirm login.",
+		qrLoginScanned: "Scanned. Confirm login on your phone.",
+		qrLoginSuccess: "Zhihu login succeeded. Cookie saved.",
+		qrLoginExpired: "QR code expired. Reopen QR login.",
+		qrLoginCanceled: "QR login canceled.",
+		qrLoginFailed: "QR login failed:",
 		noticeImporting: "Importing Zhihu answer...",
 		noticeSuccess: "Imported:",
 		noticeFailure: "Import failed:",
