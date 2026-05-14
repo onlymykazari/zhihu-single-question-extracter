@@ -20,6 +20,7 @@ interface ZhihuApiAnswer {
 	excerpt_new?: string;
 	created_time?: number | string;
 	updated_time?: number | string;
+	type?: string;
 	author?: {
 		name?: string;
 		url?: string;
@@ -55,6 +56,18 @@ function cleanQuestionTitle(value?: string): string {
 	return normalized || "Untitled";
 }
 
+function cleanQuestionDescription(value?: string): string | undefined {
+	if (!value) {
+		return undefined;
+	}
+	const cleaned = value
+		.replace(/显示全部\s*$/g, "")
+		.replace(/显示更多\s*$/g, "")
+		.replace(/阅读全文\s*$/g, "")
+		.trim();
+	return cleaned || undefined;
+}
+
 function textFromElement(root: ParentNode, selector: string): string | undefined {
 	const element = root.querySelector(selector);
 	return element?.textContent?.trim() || undefined;
@@ -72,6 +85,33 @@ function hrefFromElement(root: ParentNode, selector: string): string | undefined
 		return undefined;
 	}
 	return href.startsWith("http") ? href : `https://www.zhihu.com${href}`;
+}
+
+function parseJsonLdAuthor(html: string): {authorName?: string; authorUrl?: string} | null {
+	const scripts = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/ig);
+	if (!scripts) {
+		return null;
+	}
+
+	for (const script of scripts) {
+		const raw = script.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "").trim();
+		if (!raw) {
+			continue;
+		}
+		try {
+			const data = JSON.parse(raw) as Record<string, unknown>;
+			const author = data.author as Record<string, unknown> | undefined;
+			const authorName = cleanAuthorName(typeof author?.name === "string" ? author.name : "");
+			const authorUrl = normalizeAuthorUrl(typeof author?.url === "string" ? author.url : "");
+			if (authorName || authorUrl) {
+				return {authorName, authorUrl};
+			}
+		} catch {
+			continue;
+		}
+	}
+
+	return null;
 }
 
 function parseInitialState(html: string): unknown | null {
@@ -157,6 +197,12 @@ function normalizeAuthorUrl(value?: string): string | undefined {
 	if (!value) {
 		return undefined;
 	}
+	if (value.startsWith("https://www.zhihu.com/api/v4/people/")) {
+		return value.replace("/api/v4/people/", "/people/");
+	}
+	if (value.startsWith("http://www.zhihu.com/api/v4/people/")) {
+		return value.replace("/api/v4/people/", "/people/").replace("http://", "https://");
+	}
 	if (value.startsWith("http")) {
 		return value;
 	}
@@ -185,11 +231,30 @@ function mergePayloads(primary: ZhihuPayload | null, secondary: ZhihuPayload | n
 	};
 }
 
-function needsAuthorEnrichment(payload: ZhihuPayload | null): boolean {
+function needsMetadataEnrichment(payload: ZhihuPayload | null): boolean {
 	if (!payload) {
 		return true;
 	}
-	return !payload.authorName || !payload.authorUrl;
+	return !payload.authorName || !payload.authorUrl || !payload.publishedAt || !payload.updatedAt;
+}
+
+function applyApiMetadata(base: ZhihuPayload | null, apiPayload: ZhihuPayload | null): ZhihuPayload | null {
+	if (!base) {
+		return apiPayload;
+	}
+	if (!apiPayload) {
+		return base;
+	}
+
+	return {
+		questionTitle: base.questionTitle || apiPayload.questionTitle,
+		questionDescription: apiPayload.questionDescription || base.questionDescription,
+		answerHtml: base.answerHtml || apiPayload.answerHtml,
+		authorName: apiPayload.authorName || base.authorName,
+		authorUrl: apiPayload.authorUrl || base.authorUrl,
+		publishedAt: apiPayload.publishedAt || base.publishedAt,
+		updatedAt: apiPayload.updatedAt || base.updatedAt
+	};
 }
 
 function fromState(state: unknown, answerId: string): ZhihuPayload | null {
@@ -213,7 +278,7 @@ function fromState(state: unknown, answerId: string): ZhihuPayload | null {
 
 	return {
 		questionTitle: cleanQuestionTitle(String(question?.title ?? answerQuestion?.title ?? "")),
-		questionDescription: String(question?.excerpt ?? question?.detail ?? ""),
+		questionDescription: cleanQuestionDescription(String(question?.detail ?? question?.excerpt ?? "")),
 		answerHtml: String(answer.content ?? answer.excerpt_new ?? ""),
 		authorName: cleanAuthorName(String(author?.name ?? "")),
 		authorUrl: normalizeAuthorUrl(author?.url ?? author?.url_token),
@@ -448,7 +513,7 @@ function fromDom(html: string): ZhihuPayload | null {
 
 	return {
 		questionTitle,
-		questionDescription,
+		questionDescription: cleanQuestionDescription(questionDescription),
 		answerHtml,
 		authorName: cleanAuthorName(authorName),
 		authorUrl,
@@ -466,7 +531,7 @@ function fromAnswerApi(answer: ZhihuApiAnswer): ZhihuPayload | null {
 
 	return {
 		questionTitle,
-		questionDescription: String(answer.question?.detail ?? answer.question?.excerpt ?? ""),
+		questionDescription: cleanQuestionDescription(String(answer.question?.detail ?? answer.question?.excerpt ?? "")),
 		answerHtml,
 		authorName: cleanAuthorName(answer.author?.name),
 		authorUrl: normalizeAuthorUrl(answer.author?.url),
@@ -517,11 +582,20 @@ export class ZhihuAdapter implements SourceAdapter {
 		try {
 			const html = await fetchText(url, headers, context.timeoutMs);
 			const state = parseInitialState(html);
+			const jsonLdAuthor = parseJsonLdAuthor(html);
 			payload = mergePayloads(fromState(state, match.answerId), fromDom(html));
-			if (needsAuthorEnrichment(payload)) {
+			if (jsonLdAuthor) {
+				payload = mergePayloads(payload, {
+					questionTitle: "",
+					answerHtml: "",
+					authorName: jsonLdAuthor.authorName,
+					authorUrl: jsonLdAuthor.authorUrl
+				});
+			}
+			if (needsMetadataEnrichment(payload)) {
 				try {
 					const apiAnswer = await fetchJson<ZhihuApiAnswer>(apiUrl, headers, context.timeoutMs);
-					payload = mergePayloads(payload, fromAnswerApi(apiAnswer));
+					payload = applyApiMetadata(payload, fromAnswerApi(apiAnswer));
 				} catch {
 					// Keep the HTML-derived payload when the API enrichment path is blocked.
 				}
