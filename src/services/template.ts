@@ -1,12 +1,20 @@
 import type {ExtractedContent} from "../types";
 import {formatDate} from "../utils/date";
-import {sanitizeFilenamePart} from "../utils/sanitize";
+import {looksLikeCssNoise, normalizeHumanText, sanitizeFilenamePart, truncateText} from "../utils/sanitize";
+
+function normalizeFilenameValue(value: string, fallback: string, maxLength: number): string {
+	const normalized = truncateText(sanitizeFilenamePart(normalizeHumanText(value)), maxLength);
+	if (!normalized || looksLikeCssNoise(normalized)) {
+		return fallback;
+	}
+	return normalized;
+}
 
 export function applyFilenameTemplate(template: string, content: ExtractedContent, importedAt: Date, dateFormat: string): string {
 	const publishedDate = content.publishedAt ? new Date(content.publishedAt) : importedAt;
 	const replacements: Record<string, string> = {
-		"{{title}}": content.title,
-		"{{author}}": content.authorName ?? "Unknown",
+		"{{title}}": normalizeFilenameValue(content.title, "Untitled", 80),
+		"{{author}}": normalizeFilenameValue(content.authorName ?? "", "Unknown", 32),
 		"{{import_date}}": formatDate(importedAt, dateFormat),
 		"{{answer_date}}": formatDate(publishedDate, dateFormat),
 		"{{question_id}}": content.metadata.zhihu_question_id ?? "",
@@ -20,6 +28,6 @@ export function applyFilenameTemplate(template: string, content: ExtractedConten
 		}
 	}
 
-	const cleaned = sanitizeFilenamePart(output);
+	const cleaned = truncateText(sanitizeFilenamePart(output), 120);
 	return cleaned || "Imported Note";
 }

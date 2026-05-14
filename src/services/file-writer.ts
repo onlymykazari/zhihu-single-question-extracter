@@ -1,5 +1,6 @@
 import type {ExtractedContent, ImportResult, PluginSettings} from "../types";
 import {joinVaultPath} from "../utils/path";
+import {truncateText} from "../utils/sanitize";
 import {applyFilenameTemplate} from "./template";
 import type {App} from "obsidian";
 
@@ -22,12 +23,12 @@ export async function writeImportedNote(
 	importedAt: Date
 ): Promise<ImportResult> {
 	await ensureFolder(app, settings.importFolder);
-	let filename = applyFilenameTemplate(settings.filenameTemplate, content, importedAt, settings.dateFormat);
+	let filename = truncateText(applyFilenameTemplate(settings.filenameTemplate, content, importedAt, settings.dateFormat), 120);
 	let fullPath = joinVaultPath(settings.importFolder, `${filename}.md`);
 
 	if (app.vault.getAbstractFileByPath(fullPath)) {
 		const suffix = content.metadata.zhihu_answer_id ? ` - ${content.metadata.zhihu_answer_id}` : " - 2";
-		filename += suffix;
+		filename = truncateText(filename, 120 - suffix.length) + suffix;
 		fullPath = joinVaultPath(settings.importFolder, `${filename}.md`);
 	}
 

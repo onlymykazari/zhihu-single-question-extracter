@@ -1,6 +1,7 @@
 import {requestUrl} from "obsidian";
 import type {SourceAdapter} from "./base";
 import type {ExtractContext, ExtractedContent} from "../types";
+import {looksLikeCssNoise, normalizeHumanText, truncateText} from "../utils/sanitize";
 import {parseZhihuAnswerUrl} from "../utils/url";
 
 interface ZhihuPayload {
@@ -29,6 +30,22 @@ interface ZhihuApiAnswer {
 		detail?: string;
 		excerpt?: string;
 	};
+}
+
+function cleanAuthorName(value?: string): string | undefined {
+	if (!value) {
+		return undefined;
+	}
+	const normalized = truncateText(normalizeHumanText(value), 64);
+	if (!normalized || looksLikeCssNoise(normalized)) {
+		return undefined;
+	}
+	return normalized;
+}
+
+function cleanQuestionTitle(value?: string): string {
+	const normalized = truncateText(normalizeHumanText(value ?? ""), 120);
+	return normalized || "Untitled";
 }
 
 function textFromElement(root: ParentNode, selector: string): string | undefined {
@@ -108,10 +125,10 @@ function fromState(state: unknown, answerId: string): ZhihuPayload | null {
 	const author = answer.author as Record<string, unknown> | undefined;
 
 	return {
-		questionTitle: String(question?.title ?? answerQuestion?.title ?? ""),
+		questionTitle: cleanQuestionTitle(String(question?.title ?? answerQuestion?.title ?? "")),
 		questionDescription: String(question?.excerpt ?? question?.detail ?? ""),
 		answerHtml: String(answer.content ?? answer.excerpt_new ?? ""),
-		authorName: String(author?.name ?? ""),
+		authorName: cleanAuthorName(String(author?.name ?? "")),
 		authorUrl: author?.url ? `https://www.zhihu.com${String(author.url)}` : undefined,
 		publishedAt: toIso(answer.created_time),
 		updatedAt: toIso(answer.updated_time)
@@ -307,7 +324,7 @@ function fromDom(html: string): ZhihuPayload | null {
 		questionTitle,
 		questionDescription,
 		answerHtml,
-		authorName,
+		authorName: cleanAuthorName(authorName),
 		publishedAt,
 		updatedAt
 	};
@@ -315,7 +332,7 @@ function fromDom(html: string): ZhihuPayload | null {
 
 function fromAnswerApi(answer: ZhihuApiAnswer): ZhihuPayload | null {
 	const answerHtml = String(answer.content ?? answer.excerpt_new ?? answer.excerpt ?? "");
-	const questionTitle = String(answer.question?.title ?? "");
+	const questionTitle = cleanQuestionTitle(String(answer.question?.title ?? ""));
 	if (!questionTitle || !answerHtml) {
 		return null;
 	}
@@ -324,7 +341,7 @@ function fromAnswerApi(answer: ZhihuApiAnswer): ZhihuPayload | null {
 		questionTitle,
 		questionDescription: String(answer.question?.detail ?? answer.question?.excerpt ?? ""),
 		answerHtml,
-		authorName: answer.author?.name,
+		authorName: cleanAuthorName(answer.author?.name),
 		authorUrl: answer.author?.url ? `https://www.zhihu.com${answer.author.url}` : undefined,
 		publishedAt: toIso(answer.created_time),
 		updatedAt: toIso(answer.updated_time)
