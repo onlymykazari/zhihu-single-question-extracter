@@ -58,6 +58,15 @@ function htmlFromElement(root: ParentNode, selector: string): string | undefined
 	return element?.innerHTML?.trim() || undefined;
 }
 
+function hrefFromElement(root: ParentNode, selector: string): string | undefined {
+	const element = root.querySelector(selector);
+	const href = element?.getAttribute("href")?.trim();
+	if (!href) {
+		return undefined;
+	}
+	return href.startsWith("http") ? href : `https://www.zhihu.com${href}`;
+}
+
 function parseInitialState(html: string): unknown | null {
 	const patterns = [
 		/<script id="js-initialData" type="text\/json">([\s\S]*?)<\/script>/i,
@@ -236,6 +245,7 @@ function htmlToMarkdown(html: string): {markdown: string; images: string[]} {
 	const doc = parser.parseFromString(`<div id="root">${html}</div>`, "text/html");
 	const root = doc.getElementById("root");
 	const images: string[] = [];
+	let lastImageUrl: string | null = null;
 
 	function renderNode(node: Node): string {
 		if (node.nodeType === Node.TEXT_NODE) {
@@ -246,6 +256,14 @@ function htmlToMarkdown(html: string): {markdown: string; images: string[]} {
 		}
 		const tag = node.tagName.toLowerCase();
 		switch (tag) {
+			case "style":
+			case "script":
+			case "noscript":
+			case "svg":
+			case "path":
+			case "defs":
+			case "symbol":
+				return "";
 			case "p":
 				return `${renderChildren(node).trim()}\n\n`;
 			case "br":
@@ -280,6 +298,10 @@ function htmlToMarkdown(html: string): {markdown: string; images: string[]} {
 				if (!imageUrl) {
 					return "";
 				}
+				if (lastImageUrl === imageUrl) {
+					return "";
+				}
+				lastImageUrl = imageUrl;
 				images.push(imageUrl);
 				const alt = node.getAttribute("alt") ?? "";
 				return `![${alt}](${imageUrl})\n\n`;
@@ -302,8 +324,27 @@ function htmlToMarkdown(html: string): {markdown: string; images: string[]} {
 		return Array.from(node.childNodes).map(renderNode).join("");
 	}
 
-	const markdown = root ? renderChildren(root).replace(/\n{3,}/g, "\n\n").trim() : "";
+	const markdown = root ? postProcessMarkdown(renderChildren(root)) : "";
 	return {markdown, images: Array.from(new Set(images))};
+}
+
+function postProcessMarkdown(markdown: string): string {
+	const lines = markdown.split("\n");
+	const filtered: string[] = [];
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (!trimmed) {
+			filtered.push("");
+			continue;
+		}
+		if (looksLikeCssNoise(trimmed) && !trimmed.startsWith("![")) {
+			continue;
+		}
+		filtered.push(line);
+	}
+
+	return filtered.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function fromDom(html: string): ZhihuPayload | null {
@@ -312,7 +353,14 @@ function fromDom(html: string): ZhihuPayload | null {
 	const questionTitle = textFromElement(doc, "h1.QuestionHeader-title, h1.Post-Title");
 	const questionDescription = htmlFromElement(doc, ".QuestionRichText, .QuestionHeader-detail");
 	const answerHtml = htmlFromElement(doc, ".RichContent .RichText, .AnswerCard .RichContent-inner, .Post-RichText");
-	const authorName = textFromElement(doc, ".AuthorInfo-name, .UserLink-link");
+	const authorName = textFromElement(
+		doc,
+		".AuthorInfo-name, .UserLink-link, .AuthorInfo-content a[href^='/people/'], .AnswerItem-authorInfo a[href^='/people/']"
+	);
+	const authorUrl = hrefFromElement(
+		doc,
+		".AuthorInfo-content a[href^='/people/'], .AuthorInfo a[href^='/people/'], .AnswerItem-authorInfo a[href^='/people/']"
+	);
 	const publishedAt = doc.querySelector("meta[itemprop='dateCreated']")?.getAttribute("content") ?? undefined;
 	const updatedAt = doc.querySelector("meta[itemprop='dateModified']")?.getAttribute("content") ?? undefined;
 
@@ -325,6 +373,7 @@ function fromDom(html: string): ZhihuPayload | null {
 		questionDescription,
 		answerHtml,
 		authorName: cleanAuthorName(authorName),
+		authorUrl,
 		publishedAt,
 		updatedAt
 	};
