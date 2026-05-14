@@ -9,6 +9,7 @@ export interface PluginSettings {
 	locale: Locale;
 	enableCookie: boolean;
 	cookie: string;
+	userAgent: string;
 	requestTimeoutMs: number;
 	openAfterImport: boolean;
 	optimizeForObsidian: boolean;
@@ -16,6 +17,7 @@ export interface PluginSettings {
 
 export interface ExtractContext {
 	cookie?: string;
+	userAgent: string;
 	timeoutMs: number;
 	cacheImages: boolean;
 	assetFolder: string;

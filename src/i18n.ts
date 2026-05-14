@@ -25,6 +25,8 @@ interface TextBundle {
 	settingCookieEnabledDesc: string;
 	settingCookieName: string;
 	settingCookieDesc: string;
+	settingUserAgentName: string;
+	settingUserAgentDesc: string;
 	settingTimeoutName: string;
 	settingTimeoutDesc: string;
 	modalTitle: string;
@@ -79,11 +81,13 @@ const BUNDLES: Record<ResolvedLocale, TextBundle> = {
 		settingCookieEnabledDesc: "用于辅助抓取受限内容。",
 		settingCookieName: "Cookie",
 		settingCookieDesc: "原始 Cookie 字符串，仅在启用 Cookie 时发送。",
+		settingUserAgentName: "User-Agent",
+		settingUserAgentDesc: "用于请求知乎页面的浏览器标识，可保留默认值或按需自定义。",
 		settingTimeoutName: "请求超时（毫秒）",
 		settingTimeoutDesc: "页面和图片请求的超时时间。",
 		modalTitle: "导入知乎回答",
 		modalUrlName: "回答链接",
-		modalUrlDesc: "粘贴知乎回答链接，例如 https://www.zhihu.com/question/.../answer/...",
+		modalUrlDesc: "可粘贴完整知乎回答链接，或包含该链接的整段分享文本。",
 		modalTagsName: "标签",
 		modalTagsDesc: "使用逗号分隔，会与默认标签合并。",
 		modalCacheImagesName: "缓存图片",
@@ -131,11 +135,13 @@ const BUNDLES: Record<ResolvedLocale, TextBundle> = {
 		settingCookieEnabledDesc: "Send Cookie headers for restricted content.",
 		settingCookieName: "Cookie",
 		settingCookieDesc: "Raw Cookie string sent only when Cookie is enabled.",
+		settingUserAgentName: "User-Agent",
+		settingUserAgentDesc: "Browser identifier used for Zhihu requests. Keep the default or override it if needed.",
 		settingTimeoutName: "Request timeout (ms)",
 		settingTimeoutDesc: "Timeout for page and image requests.",
 		modalTitle: "Import Zhihu answer",
 		modalUrlName: "Answer URL",
-		modalUrlDesc: "Paste a Zhihu answer URL such as https://www.zhihu.com/question/.../answer/...",
+		modalUrlDesc: "Paste a Zhihu answer URL or any shared text that contains one.",
 		modalTagsName: "Tags",
 		modalTagsDesc: "Comma-separated. Merged with default tags.",
 		modalCacheImagesName: "Cache images",

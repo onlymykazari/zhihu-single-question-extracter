@@ -2,7 +2,7 @@ import {App, ButtonComponent, Modal, Setting, TextComponent, ToggleComponent} fr
 import {getText} from "../i18n";
 import type {ImportInput, Locale} from "../types";
 import {parseTags} from "../utils/tags";
-import {parseZhihuAnswerUrl} from "../utils/url";
+import {extractZhihuAnswerUrl, parseZhihuAnswerUrl} from "../utils/url";
 
 export class ImportModal extends Modal {
 	private readonly locale: Locale;
@@ -32,7 +32,7 @@ export class ImportModal extends Modal {
 			.addText((component: TextComponent) => {
 				component.setPlaceholder("https://www.zhihu.com/question/.../answer/...");
 				component.onChange((value) => {
-					this.urlValue = value.trim();
+					this.urlValue = extractZhihuAnswerUrl(value) ?? value.trim();
 					this.refreshSubmitState();
 				});
 				window.setTimeout(() => component.inputEl.focus(), 0);

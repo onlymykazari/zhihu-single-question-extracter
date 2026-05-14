@@ -4,4 +4,6 @@ export const DEFAULT_FILENAME_TEMPLATE = "{{title}} - {{author}} - {{import_date
 export const DEFAULT_DATE_FORMAT = "YYYY-MM-DD";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15000;
 export const DEFAULT_TAGS = ["zhihu", "clipping"];
+export const DEFAULT_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
 export const ZHIHU_URL_PATTERN = /^https?:\/\/www\.zhihu\.com\/question\/(\d+)\/answer\/(\d+)(?:[/?#].*)?$/i;
+export const ZHIHU_URL_EXTRACT_PATTERN = /https?:\/\/www\.zhihu\.com\/question\/\d+\/answer\/\d+(?:[/?#][^\s]*)?/i;

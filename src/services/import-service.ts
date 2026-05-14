@@ -20,6 +20,7 @@ export async function importFromInput(plugin: ZhihuImporterPlugin, input: Import
 	const importedAt = new Date();
 	const content = await adapter.extract(input.url, {
 		cookie: plugin.settings.enableCookie ? plugin.settings.cookie : undefined,
+		userAgent: plugin.settings.userAgent,
 		timeoutMs: plugin.settings.requestTimeoutMs,
 		cacheImages: input.cacheImages,
 		assetFolder: plugin.settings.assetFolder,

@@ -32,6 +32,13 @@ interface ZhihuApiAnswer {
 	};
 }
 
+interface ZhihuStateAuthor {
+	name?: string;
+	url?: string;
+	url_token?: string;
+	id?: string | number;
+}
+
 function cleanAuthorName(value?: string): string | undefined {
 	if (!value) {
 		return undefined;
@@ -114,6 +121,70 @@ function pickRecord<T extends Record<string, unknown>>(collection: unknown, key:
 	return value && typeof value === "object" ? value as T : null;
 }
 
+function pickStateAuthor(entities: Record<string, unknown>, answer: Record<string, unknown>): ZhihuStateAuthor | null {
+	const directAuthor = answer.author;
+	if (directAuthor && typeof directAuthor === "object") {
+		const typed = directAuthor as ZhihuStateAuthor;
+		if (typed.name || typed.url || typed.url_token) {
+			return typed;
+		}
+	}
+
+	const directAuthorId = typeof directAuthor === "string" || typeof directAuthor === "number"
+		? String(directAuthor)
+		: typeof (directAuthor as {id?: string | number} | undefined)?.id !== "undefined"
+			? String((directAuthor as {id?: string | number}).id)
+			: "";
+
+	if (!directAuthorId) {
+		return null;
+	}
+
+	const authorCollections = ["users", "members", "people"];
+	for (const key of authorCollections) {
+		const collection = pickRecord<Record<string, unknown>>(entities, key);
+		const authorRecord = collection ? pickRecord<Record<string, unknown>>(collection, directAuthorId) : null;
+		const author = authorRecord as ZhihuStateAuthor | null;
+		if (author?.name || author?.url || author?.url_token) {
+			return author;
+		}
+	}
+
+	return null;
+}
+
+function normalizeAuthorUrl(value?: string): string | undefined {
+	if (!value) {
+		return undefined;
+	}
+	if (value.startsWith("http")) {
+		return value;
+	}
+	if (value.startsWith("/people/")) {
+		return `https://www.zhihu.com${value}`;
+	}
+	return `https://www.zhihu.com/people/${value.replace(/^\/+/, "")}`;
+}
+
+function mergePayloads(primary: ZhihuPayload | null, secondary: ZhihuPayload | null): ZhihuPayload | null {
+	if (!primary) {
+		return secondary;
+	}
+	if (!secondary) {
+		return primary;
+	}
+
+	return {
+		questionTitle: primary.questionTitle || secondary.questionTitle,
+		questionDescription: primary.questionDescription || secondary.questionDescription,
+		answerHtml: primary.answerHtml || secondary.answerHtml,
+		authorName: primary.authorName || secondary.authorName,
+		authorUrl: primary.authorUrl || secondary.authorUrl,
+		publishedAt: primary.publishedAt || secondary.publishedAt,
+		updatedAt: primary.updatedAt || secondary.updatedAt
+	};
+}
+
 function fromState(state: unknown, answerId: string): ZhihuPayload | null {
 	if (!state || typeof state !== "object") {
 		return null;
@@ -131,14 +202,14 @@ function fromState(state: unknown, answerId: string): ZhihuPayload | null {
 	const answerQuestion = answer.question as Record<string, unknown> | undefined;
 	const questionId = String(answerQuestion?.id ?? "");
 	const question = questions ? pickRecord<Record<string, unknown>>(questions, questionId) : null;
-	const author = answer.author as Record<string, unknown> | undefined;
+	const author = pickStateAuthor(entities, answer);
 
 	return {
 		questionTitle: cleanQuestionTitle(String(question?.title ?? answerQuestion?.title ?? "")),
 		questionDescription: String(question?.excerpt ?? question?.detail ?? ""),
 		answerHtml: String(answer.content ?? answer.excerpt_new ?? ""),
 		authorName: cleanAuthorName(String(author?.name ?? "")),
-		authorUrl: author?.url ? `https://www.zhihu.com${String(author.url)}` : undefined,
+		authorUrl: normalizeAuthorUrl(author?.url ?? author?.url_token),
 		publishedAt: toIso(answer.created_time),
 		updatedAt: toIso(answer.updated_time)
 	};
@@ -158,9 +229,9 @@ function toIso(value: unknown): string | undefined {
 	return undefined;
 }
 
-function buildHeaders(cookie?: string): Record<string, string> {
+function buildHeaders(cookie: string | undefined, userAgent: string): Record<string, string> {
 	const headers: Record<string, string> = {
-		"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+		"User-Agent": userAgent,
 		Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,application/json;q=0.8,*/*;q=0.7",
 		"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 		"Cache-Control": "no-cache",
@@ -391,7 +462,7 @@ function fromAnswerApi(answer: ZhihuApiAnswer): ZhihuPayload | null {
 		questionDescription: String(answer.question?.detail ?? answer.question?.excerpt ?? ""),
 		answerHtml,
 		authorName: cleanAuthorName(answer.author?.name),
-		authorUrl: answer.author?.url ? `https://www.zhihu.com${answer.author.url}` : undefined,
+		authorUrl: normalizeAuthorUrl(answer.author?.url),
 		publishedAt: toIso(answer.created_time),
 		updatedAt: toIso(answer.updated_time)
 	};
@@ -432,13 +503,13 @@ export class ZhihuAdapter implements SourceAdapter {
 		}
 
 		const cookie = sanitizeCookie(context.cookie);
-		const headers = buildHeaders(cookie);
+		const headers = buildHeaders(cookie, context.userAgent);
 		let payload: ZhihuPayload | null = null;
 
 		try {
 			const html = await fetchText(url, headers, context.timeoutMs);
 			const state = parseInitialState(html);
-			payload = fromState(state, match.answerId) ?? fromDom(html);
+			payload = mergePayloads(fromState(state, match.answerId), fromDom(html));
 		} catch (error) {
 			if (!(error instanceof Error) || error.message !== "HTTP_403") {
 				try {

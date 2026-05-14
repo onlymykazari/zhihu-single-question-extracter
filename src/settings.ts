@@ -1,5 +1,5 @@
 import {App, PluginSettingTab, Setting} from "obsidian";
-import {DEFAULT_ASSET_FOLDER, DEFAULT_DATE_FORMAT, DEFAULT_FILENAME_TEMPLATE, DEFAULT_IMPORT_FOLDER, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_TAGS} from "./constants";
+import {DEFAULT_ASSET_FOLDER, DEFAULT_DATE_FORMAT, DEFAULT_FILENAME_TEMPLATE, DEFAULT_IMPORT_FOLDER, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_TAGS, DEFAULT_USER_AGENT} from "./constants";
 import {getText} from "./i18n";
 import type ZhihuImporterPlugin from "./main";
 import type {PluginSettings} from "./types";
@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	locale: "auto",
 	enableCookie: false,
 	cookie: "",
+	userAgent: DEFAULT_USER_AGENT,
 	requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
 	openAfterImport: true,
 	optimizeForObsidian: false
@@ -141,6 +142,17 @@ export class ZhihuImporterSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.cookie)
 				.onChange(async (value) => {
 					this.plugin.settings.cookie = value.trim();
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName(text.settingUserAgentName)
+			.setDesc(text.settingUserAgentDesc)
+			.addTextArea((component) => component
+				.setPlaceholder(DEFAULT_USER_AGENT)
+				.setValue(this.plugin.settings.userAgent)
+				.onChange(async (value) => {
+					this.plugin.settings.userAgent = value.trim() || DEFAULT_USER_AGENT;
 					await this.plugin.saveSettings();
 				}));
 
