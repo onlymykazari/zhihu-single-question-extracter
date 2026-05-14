@@ -185,6 +185,13 @@ function mergePayloads(primary: ZhihuPayload | null, secondary: ZhihuPayload | n
 	};
 }
 
+function needsAuthorEnrichment(payload: ZhihuPayload | null): boolean {
+	if (!payload) {
+		return true;
+	}
+	return !payload.authorName || !payload.authorUrl;
+}
+
 function fromState(state: unknown, answerId: string): ZhihuPayload | null {
 	if (!state || typeof state !== "object") {
 		return null;
@@ -505,15 +512,23 @@ export class ZhihuAdapter implements SourceAdapter {
 		const cookie = sanitizeCookie(context.cookie);
 		const headers = buildHeaders(cookie, context.userAgent);
 		let payload: ZhihuPayload | null = null;
+		const apiUrl = `https://www.zhihu.com/api/v4/answers/${match.answerId}?include=content,excerpt,excerpt_new,created_time,updated_time,author.name,author.url,question.title,question.excerpt,question.detail`;
 
 		try {
 			const html = await fetchText(url, headers, context.timeoutMs);
 			const state = parseInitialState(html);
 			payload = mergePayloads(fromState(state, match.answerId), fromDom(html));
+			if (needsAuthorEnrichment(payload)) {
+				try {
+					const apiAnswer = await fetchJson<ZhihuApiAnswer>(apiUrl, headers, context.timeoutMs);
+					payload = mergePayloads(payload, fromAnswerApi(apiAnswer));
+				} catch {
+					// Keep the HTML-derived payload when the API enrichment path is blocked.
+				}
+			}
 		} catch (error) {
 			if (!(error instanceof Error) || error.message !== "HTTP_403") {
 				try {
-					const apiUrl = `https://www.zhihu.com/api/v4/answers/${match.answerId}?include=content,excerpt,excerpt_new,created_time,updated_time,author.name,author.url,question.title,question.excerpt,question.detail`;
 					const apiAnswer = await fetchJson<ZhihuApiAnswer>(apiUrl, headers, context.timeoutMs);
 					payload = fromAnswerApi(apiAnswer);
 				} catch (apiError) {
@@ -521,7 +536,6 @@ export class ZhihuAdapter implements SourceAdapter {
 				}
 			} else {
 				try {
-					const apiUrl = `https://www.zhihu.com/api/v4/answers/${match.answerId}?include=content,excerpt,excerpt_new,created_time,updated_time,author.name,author.url,question.title,question.excerpt,question.detail`;
 					const apiAnswer = await fetchJson<ZhihuApiAnswer>(apiUrl, headers, context.timeoutMs);
 					payload = fromAnswerApi(apiAnswer);
 				} catch (apiError) {
