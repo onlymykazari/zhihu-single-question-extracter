@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-zhihu-importer",
-	"version": "1.0.7-beta.4",
+	"version": "1.0.7-beta.5",
 	"description": "Import Zhihu answers into Obsidian as structured Markdown notes.",
 	"main": "main.js",
 	"type": "module",

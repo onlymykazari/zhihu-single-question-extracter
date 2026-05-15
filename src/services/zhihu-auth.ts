@@ -12,8 +12,9 @@ export interface ZhihuQrLoginSession {
 }
 
 export interface ZhihuQrPollResult {
-	status: "waiting" | "scanned" | "success" | "expired" | "canceled" | "blocked";
+	status: "waiting" | "scanned" | "success" | "expired" | "canceled" | "blocked" | "verification_required";
 	message?: string;
+	redirect?: string;
 	cookie?: string;
 }
 
@@ -31,6 +32,15 @@ interface QrScanResponse {
 	errmsg?: string;
 	scanned?: boolean;
 	confirmed?: boolean;
+}
+
+interface ZhihuErrorResponse {
+	error?: {
+		code?: number;
+		message?: string;
+		redirect?: string;
+		need_login?: boolean;
+	};
 }
 
 function unwrapResponse<T>(value: T | {data?: T}): T {
@@ -100,6 +110,15 @@ function cookieValue(cookie: string | undefined, name: string): string | undefin
 	return undefined;
 }
 
+function udidFromCookie(cookie: string | undefined): string | undefined {
+	const dC0 = cookieValue(cookie, "d_c0");
+	if (!dC0) {
+		return undefined;
+	}
+	const separatorIndex = dC0.indexOf("|");
+	return separatorIndex >= 0 ? dC0.slice(0, separatorIndex) : dC0;
+}
+
 function buildHeaders(userAgent: string, cookie?: string): Record<string, string> {
 	const headers: Record<string, string> = {
 		"User-Agent": userAgent,
@@ -114,9 +133,13 @@ function buildHeaders(userAgent: string, cookie?: string): Record<string, string
 		"sec-ch-ua-platform": "\"macOS\""
 	};
 	const xsrf = cookieValue(cookie, "_xsrf");
+	const udid = udidFromCookie(cookie);
 	if (xsrf) {
 		headers["x-xsrftoken"] = xsrf;
 		headers["x-xsrf-token"] = xsrf;
+	}
+	if (udid) {
+		headers["x-udid"] = udid;
 	}
 	if (cookie) {
 		headers.Cookie = cookie;
@@ -154,7 +177,7 @@ async function requestJsonAllowForbidden<T>(
 	userAgent: string,
 	cookie: string,
 	timeoutMs: number
-): Promise<{json?: T; cookie: string; status: number}> {
+): Promise<{json?: T | ZhihuErrorResponse; cookie: string; status: number}> {
 	const response = await withTimeout(requestUrl({
 		url,
 		method,
@@ -166,7 +189,7 @@ async function requestJsonAllowForbidden<T>(
 
 	const nextCookie = collectCookie(response, cookie);
 	if (response.status === 403) {
-		return {cookie: nextCookie, status: response.status};
+		return {json: response.json as ZhihuErrorResponse, cookie: nextCookie, status: response.status};
 	}
 	if (response.status >= 400) {
 		throw new Error(`Zhihu QR login request failed with status ${response.status}`);
@@ -264,10 +287,18 @@ export async function pollZhihuQrLogin(
 	const {json, cookie, status} = await requestJsonAllowForbidden<QrScanResponse>(scanUrl, "GET", userAgent, session.cookie, timeoutMs);
 	session.cookie = cookie;
 	if (status === 403) {
-		return {status: "blocked", message: "scan_info returned 403; still waiting for scan confirmation."};
+		const error = (json as ZhihuErrorResponse | undefined)?.error;
+		if (error?.code === 40352 || error?.redirect) {
+			return {
+				status: "verification_required",
+				message: error.message,
+				redirect: error.redirect
+			};
+		}
+		return {status: "blocked", message: error?.message ?? "scan_info returned 403."};
 	}
 	if (!json) {
 		return {status: "waiting"};
 	}
-	return normalizeScanStatus(json, cookie);
+	return normalizeScanStatus(json as QrScanResponse, cookie);
 }

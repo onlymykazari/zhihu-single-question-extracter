@@ -64,6 +64,10 @@ export class QrLoginModal extends Modal {
 					height: "240"
 				}
 			});
+			this.contentEl.createEl("a", {
+				text: text.qrLoginRawLink,
+				href: this.session.link
+			});
 			this.setStatus(text.qrLoginWaiting);
 			this.pollTimer = window.setTimeout(() => void this.poll(), 1500);
 		} catch (error) {
@@ -91,8 +95,11 @@ export class QrLoginModal extends Modal {
 			}
 			if (result.status === "scanned") {
 				this.setStatus(text.qrLoginScanned);
+			} else if (result.status === "verification_required") {
+				this.setStatus(result.message ? `${text.qrLoginVerificationRequired} ${result.message}` : text.qrLoginVerificationRequired);
+				return;
 			} else if (result.status === "blocked") {
-				this.setStatus(text.qrLoginBlocked);
+				this.setStatus(result.message ? `${text.qrLoginBlocked} ${result.message}` : text.qrLoginBlocked);
 			} else if (result.status === "expired") {
 				this.setStatus(text.qrLoginExpired);
 				return;
