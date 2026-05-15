@@ -40,21 +40,34 @@ function unwrapResponse<T>(value: T | {data?: T}): T {
 	return value as T;
 }
 
-function cookiePairsFromSetCookie(value: string): string[] {
-	return value
-		.split(/,(?=\s*[^;,=\s]+=[^;,]+)/g)
+function headerValues(value: unknown): string[] {
+	if (!value) {
+		return [];
+	}
+	if (Array.isArray(value)) {
+		return value.flatMap((item) => headerValues(item));
+	}
+	if (typeof value === "string") {
+		return [value];
+	}
+	return [String(value)];
+}
+
+function cookiePairsFromSetCookie(value: unknown): string[] {
+	return headerValues(value)
+		.flatMap((header) => header.split(/,(?=\s*[^;,=\s]+=[^;,]+)/g))
 		.map((part) => part.split(";")[0]?.trim() ?? "")
 		.filter(Boolean);
 }
 
-function collectCookie(response: RequestUrlResponse, existingCookie: string): string {
+function collectCookie(response: RequestUrlResponse, existingCookie: string | undefined): string {
 	const setCookie = response.headers["set-cookie"] ?? response.headers["Set-Cookie"];
 	if (!setCookie) {
-		return existingCookie;
+		return existingCookie ?? "";
 	}
 
 	const jar = new Map<string, string>();
-	for (const pair of existingCookie.split(";").map((part) => part.trim()).filter(Boolean)) {
+	for (const pair of headerValues(existingCookie).join(";").split(";").map((part) => part.trim()).filter(Boolean)) {
 		const [name] = pair.split("=");
 		if (name) {
 			jar.set(name, pair);
