@@ -12,7 +12,7 @@ export interface ZhihuQrLoginSession {
 }
 
 export interface ZhihuQrPollResult {
-	status: "waiting" | "scanned" | "success" | "expired" | "canceled";
+	status: "waiting" | "scanned" | "success" | "expired" | "canceled" | "blocked";
 	message?: string;
 	cookie?: string;
 }
@@ -84,15 +84,40 @@ function collectCookie(response: RequestUrlResponse, existingCookie: string | un
 	return Array.from(jar.values()).join("; ");
 }
 
+function cookieValue(cookie: string | undefined, name: string): string | undefined {
+	if (!cookie) {
+		return undefined;
+	}
+	for (const pair of cookie.split(";").map((part) => part.trim()).filter(Boolean)) {
+		const separatorIndex = pair.indexOf("=");
+		if (separatorIndex <= 0) {
+			continue;
+		}
+		if (pair.slice(0, separatorIndex) === name) {
+			return pair.slice(separatorIndex + 1);
+		}
+	}
+	return undefined;
+}
+
 function buildHeaders(userAgent: string, cookie?: string): Record<string, string> {
 	const headers: Record<string, string> = {
 		"User-Agent": userAgent,
 		Accept: "application/json,text/plain,*/*",
 		"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 		"Cache-Control": "no-cache",
+		Origin: "https://www.zhihu.com",
 		Pragma: "no-cache",
-		Referer: "https://www.zhihu.com/signin"
+		Referer: "https://www.zhihu.com/signin",
+		"sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+		"sec-ch-ua-mobile": "?0",
+		"sec-ch-ua-platform": "\"macOS\""
 	};
+	const xsrf = cookieValue(cookie, "_xsrf");
+	if (xsrf) {
+		headers["x-xsrftoken"] = xsrf;
+		headers["x-xsrf-token"] = xsrf;
+	}
 	if (cookie) {
 		headers.Cookie = cookie;
 	}
@@ -121,6 +146,33 @@ async function requestJson<T>(
 	}
 
 	return {json: response.json as T, cookie: nextCookie};
+}
+
+async function requestJsonAllowForbidden<T>(
+	url: string,
+	method: "GET" | "POST",
+	userAgent: string,
+	cookie: string,
+	timeoutMs: number
+): Promise<{json?: T; cookie: string; status: number}> {
+	const response = await withTimeout(requestUrl({
+		url,
+		method,
+		headers: buildHeaders(userAgent, cookie),
+		body: method === "POST" ? "" : undefined,
+		contentType: method === "POST" ? "application/x-www-form-urlencoded" : undefined,
+		throw: false
+	}), timeoutMs);
+
+	const nextCookie = collectCookie(response, cookie);
+	if (response.status === 403) {
+		return {cookie: nextCookie, status: response.status};
+	}
+	if (response.status >= 400) {
+		throw new Error(`Zhihu QR login request failed with status ${response.status}`);
+	}
+
+	return {json: response.json as T, cookie: nextCookie, status: response.status};
 }
 
 async function requestSeedCookie(userAgent: string, timeoutMs: number): Promise<string> {
@@ -209,7 +261,13 @@ export async function pollZhihuQrLogin(
 	timeoutMs: number
 ): Promise<ZhihuQrPollResult> {
 	const scanUrl = `${QR_LOGIN_URL}/${encodeURIComponent(session.token)}/scan_info`;
-	const {json, cookie} = await requestJson<QrScanResponse>(scanUrl, "GET", userAgent, session.cookie, timeoutMs);
+	const {json, cookie, status} = await requestJsonAllowForbidden<QrScanResponse>(scanUrl, "GET", userAgent, session.cookie, timeoutMs);
 	session.cookie = cookie;
+	if (status === 403) {
+		return {status: "blocked", message: "scan_info returned 403; still waiting for scan confirmation."};
+	}
+	if (!json) {
+		return {status: "waiting"};
+	}
 	return normalizeScanStatus(json, cookie);
 }

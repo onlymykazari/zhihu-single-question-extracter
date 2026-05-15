@@ -45,6 +45,7 @@ interface TextBundle {
 	qrLoginPreparing: string;
 	qrLoginWaiting: string;
 	qrLoginScanned: string;
+	qrLoginBlocked: string;
 	qrLoginSuccess: string;
 	qrLoginExpired: string;
 	qrLoginCanceled: string;
@@ -112,6 +113,7 @@ const BUNDLES: Record<ResolvedLocale, TextBundle> = {
 		qrLoginPreparing: "正在获取二维码...",
 		qrLoginWaiting: "请使用知乎 App 扫码并确认登录。",
 		qrLoginScanned: "已扫码，请在手机上确认登录。",
+		qrLoginBlocked: "状态轮询暂时被知乎拦截，二维码仍有效，请继续扫码确认。",
 		qrLoginSuccess: "知乎登录成功，Cookie 已保存。",
 		qrLoginExpired: "二维码已过期，请重新打开扫码登录。",
 		qrLoginCanceled: "扫码登录已取消。",
@@ -177,6 +179,7 @@ const BUNDLES: Record<ResolvedLocale, TextBundle> = {
 		qrLoginPreparing: "Fetching QR code...",
 		qrLoginWaiting: "Scan with the Zhihu app and confirm login.",
 		qrLoginScanned: "Scanned. Confirm login on your phone.",
+		qrLoginBlocked: "Status polling is temporarily blocked by Zhihu. Keep scanning or confirming the QR code.",
 		qrLoginSuccess: "Zhihu login succeeded. Cookie saved.",
 		qrLoginExpired: "QR code expired. Reopen QR login.",
 		qrLoginCanceled: "QR login canceled.",

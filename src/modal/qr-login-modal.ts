@@ -91,6 +91,8 @@ export class QrLoginModal extends Modal {
 			}
 			if (result.status === "scanned") {
 				this.setStatus(text.qrLoginScanned);
+			} else if (result.status === "blocked") {
+				this.setStatus(text.qrLoginBlocked);
 			} else if (result.status === "expired") {
 				this.setStatus(text.qrLoginExpired);
 				return;
