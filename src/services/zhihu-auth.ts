@@ -110,6 +110,8 @@ async function requestJson<T>(
 		url,
 		method,
 		headers: buildHeaders(userAgent, cookie),
+		body: method === "POST" ? "" : undefined,
+		contentType: method === "POST" ? "application/x-www-form-urlencoded" : undefined,
 		throw: false
 	}), timeoutMs);
 
@@ -125,8 +127,10 @@ async function requestSeedCookie(userAgent: string, timeoutMs: number): Promise<
 	try {
 		const response = await withTimeout(requestUrl({
 			url: UDID_URL,
-			method: "GET",
+			method: "POST",
 			headers: buildHeaders(userAgent),
+			body: "",
+			contentType: "application/x-www-form-urlencoded",
 			throw: false
 		}), timeoutMs);
 		return collectCookie(response, "");
@@ -186,13 +190,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 
 export async function createZhihuQrLoginSession(userAgent: string, timeoutMs: number): Promise<ZhihuQrLoginSession> {
 	let cookie = await requestSeedCookie(userAgent, timeoutMs);
-	let createResult: {json: QrCreateResponse; cookie: string};
-
-	try {
-		createResult = await requestJson<QrCreateResponse>(QR_LOGIN_URL, "POST", userAgent, cookie, timeoutMs);
-	} catch {
-		createResult = await requestJson<QrCreateResponse>(QR_LOGIN_URL, "GET", userAgent, cookie, timeoutMs);
-	}
+	const createResult = await requestJson<QrCreateResponse>(QR_LOGIN_URL, "POST", userAgent, cookie, timeoutMs);
 
 	cookie = createResult.cookie;
 	const {token, link} = extractQrPayload(createResult.json);
