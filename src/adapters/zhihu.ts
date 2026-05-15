@@ -33,6 +33,12 @@ interface ZhihuApiAnswer {
 	};
 }
 
+interface ZhihuApiQuestion {
+	title?: string;
+	detail?: string;
+	excerpt?: string;
+}
+
 interface ZhihuStateAuthor {
 	name?: string;
 	url?: string;
@@ -64,6 +70,28 @@ function cleanQuestionDescription(value?: string): string | undefined {
 		.replace(/(显示全部|显示更多|阅读全文)[\s\u200b\u200c\u200d\ufeff\xa0]*$/g, "")
 		.trim();
 	return cleaned || undefined;
+}
+
+function isPlaceholderQuestionDescription(value?: string): boolean {
+	if (!value) {
+		return false;
+	}
+	const normalized = normalizeHumanText(value);
+	return normalized === "[图片]" || normalized === "图片" || normalized === "[image]";
+}
+
+function looksTruncatedQuestionDescription(value?: string): boolean {
+	if (!value) {
+		return false;
+	}
+	const normalized = normalizeHumanText(value);
+	return (
+		normalized.endsWith("…") ||
+		normalized.endsWith("...") ||
+		normalized.includes("显示全部") ||
+		normalized.includes("显示更多") ||
+		normalized.includes("阅读全文")
+	);
 }
 
 function textFromElement(root: ParentNode, selector: string): string | undefined {
@@ -244,14 +272,50 @@ function applyApiMetadata(base: ZhihuPayload | null, apiPayload: ZhihuPayload | 
 		return base;
 	}
 
+	const questionDescription = isPlaceholderQuestionDescription(apiPayload.questionDescription)
+		? base.questionDescription
+		: apiPayload.questionDescription || base.questionDescription;
+
 	return {
 		questionTitle: base.questionTitle || apiPayload.questionTitle,
-		questionDescription: apiPayload.questionDescription || base.questionDescription,
+		questionDescription,
 		answerHtml: base.answerHtml || apiPayload.answerHtml,
 		authorName: apiPayload.authorName || base.authorName,
 		authorUrl: apiPayload.authorUrl || base.authorUrl,
 		publishedAt: apiPayload.publishedAt || base.publishedAt,
 		updatedAt: apiPayload.updatedAt || base.updatedAt
+	};
+}
+
+function applyQuestionMetadata(base: ZhihuPayload | null, questionPayload: Pick<ZhihuPayload, "questionTitle" | "questionDescription"> | null): ZhihuPayload | null {
+	if (!base) {
+		if (!questionPayload) {
+			return null;
+		}
+		return {
+			questionTitle: questionPayload.questionTitle,
+			questionDescription: questionPayload.questionDescription,
+			answerHtml: ""
+		};
+	}
+	if (!questionPayload) {
+		return base;
+	}
+
+	const preferQuestionDescription = Boolean(
+		questionPayload.questionDescription &&
+		(
+			!base.questionDescription ||
+			isPlaceholderQuestionDescription(base.questionDescription) ||
+			looksTruncatedQuestionDescription(base.questionDescription) ||
+			questionPayload.questionDescription.length > base.questionDescription.length
+		)
+	);
+
+	return {
+		...base,
+		questionTitle: questionPayload.questionTitle || base.questionTitle,
+		questionDescription: preferQuestionDescription ? questionPayload.questionDescription : base.questionDescription
 	};
 }
 
@@ -538,6 +602,19 @@ function fromAnswerApi(answer: ZhihuApiAnswer): ZhihuPayload | null {
 	};
 }
 
+function fromQuestionApi(question: ZhihuApiQuestion): Pick<ZhihuPayload, "questionTitle" | "questionDescription"> | null {
+	const questionTitle = cleanQuestionTitle(String(question.title ?? ""));
+	const questionDescription = cleanQuestionDescription(String(question.detail ?? question.excerpt ?? ""));
+	if (!questionTitle && !questionDescription) {
+		return null;
+	}
+
+	return {
+		questionTitle,
+		questionDescription
+	};
+}
+
 function toUserFacingError(error: unknown, hasCookie: boolean): Error {
 	const message = error instanceof Error ? error.message : String(error);
 	if (message === "HTTP_403") {
@@ -576,6 +653,7 @@ export class ZhihuAdapter implements SourceAdapter {
 		const headers = buildHeaders(cookie, context.userAgent);
 		let payload: ZhihuPayload | null = null;
 		const apiUrl = `https://www.zhihu.com/api/v4/answers/${match.answerId}?include=content,excerpt,excerpt_new,created_time,updated_time,author.name,author.url,question.title,question.excerpt,question.detail`;
+		const questionApiUrl = `https://www.zhihu.com/api/v4/questions/${match.questionId}?include=title,detail,excerpt`;
 
 		try {
 			const html = await fetchText(url, headers, context.timeoutMs);
@@ -598,11 +676,25 @@ export class ZhihuAdapter implements SourceAdapter {
 					// Keep the HTML-derived payload when the API enrichment path is blocked.
 				}
 			}
+			if (!payload?.questionDescription || isPlaceholderQuestionDescription(payload.questionDescription) || looksTruncatedQuestionDescription(payload.questionDescription)) {
+				try {
+					const apiQuestion = await fetchJson<ZhihuApiQuestion>(questionApiUrl, headers, context.timeoutMs);
+					payload = applyQuestionMetadata(payload, fromQuestionApi(apiQuestion));
+				} catch {
+					// Keep the existing question description when the question API path is blocked.
+				}
+			}
 		} catch (error) {
 			if (!(error instanceof Error) || error.message !== "HTTP_403") {
 				try {
 					const apiAnswer = await fetchJson<ZhihuApiAnswer>(apiUrl, headers, context.timeoutMs);
 					payload = fromAnswerApi(apiAnswer);
+					try {
+						const apiQuestion = await fetchJson<ZhihuApiQuestion>(questionApiUrl, headers, context.timeoutMs);
+						payload = applyQuestionMetadata(payload, fromQuestionApi(apiQuestion));
+					} catch {
+						// Keep answer-only payload when question enrichment is blocked.
+					}
 				} catch (apiError) {
 					throw toUserFacingError(apiError, Boolean(cookie));
 				}
@@ -610,6 +702,12 @@ export class ZhihuAdapter implements SourceAdapter {
 				try {
 					const apiAnswer = await fetchJson<ZhihuApiAnswer>(apiUrl, headers, context.timeoutMs);
 					payload = fromAnswerApi(apiAnswer);
+					try {
+						const apiQuestion = await fetchJson<ZhihuApiQuestion>(questionApiUrl, headers, context.timeoutMs);
+						payload = applyQuestionMetadata(payload, fromQuestionApi(apiQuestion));
+					} catch {
+						// Keep answer-only payload when question enrichment is blocked.
+					}
 				} catch (apiError) {
 					throw toUserFacingError(apiError, Boolean(cookie));
 				}
