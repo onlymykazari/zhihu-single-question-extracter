@@ -1,7 +1,7 @@
 {
 	"id": "zhihu-importer",
 	"name": "Zhihu Importer",
-	"version": "1.0.8",
+	"version": "1.0.9",
 	"minAppVersion": "0.15.0",
 	"description": "Import a Zhihu answer into Obsidian as a structured Markdown note.",
 	"author": "onlymykazari",

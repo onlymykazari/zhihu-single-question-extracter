@@ -1,4 +1,4 @@
-import {Notice, Plugin} from "obsidian";
+import {addIcon, Notice, Plugin} from "obsidian";
 import {ZhihuAdapter} from "./adapters/zhihu";
 import {getText, resolveLocale} from "./i18n";
 import {ImportModal} from "./modal/import-modal";
@@ -7,6 +7,20 @@ import {importFromInput} from "./services/import-service";
 import type {SourceAdapter} from "./adapters/base";
 import type {PluginSettings} from "./types";
 
+const ZHIHU_IMPORTER_ICON = "zhihu-importer-qa-download";
+
+const ZHIHU_IMPORTER_ICON_SVG = `
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+	<rect x="10" y="14" width="64" height="52" rx="14" ry="14" fill="none" stroke="currentColor" stroke-width="7"/>
+	<path d="M28 66 L24 78 L38 69" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+	<text x="42" y="48" text-anchor="middle" font-size="20" font-weight="700" font-family="Arial, sans-serif" fill="currentColor">Q&amp;A</text>
+	<circle cx="74" cy="72" r="16" fill="currentColor"/>
+	<path d="M74 62 V76" fill="none" stroke="var(--background-primary, white)" stroke-width="6" stroke-linecap="round"/>
+	<path d="M67 72 L74 79 L81 72" fill="none" stroke="var(--background-primary, white)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+	<path d="M64 84 H84" fill="none" stroke="var(--background-primary, white)" stroke-width="6" stroke-linecap="round"/>
+</svg>
+`;
+
 export default class ZhihuImporterPlugin extends Plugin {
 	settings: PluginSettings = DEFAULT_SETTINGS;
 	adapters: SourceAdapter[] = [];
@@ -14,9 +28,10 @@ export default class ZhihuImporterPlugin extends Plugin {
 	async onload(): Promise<void> {
 		await this.loadSettings();
 		this.adapters = [new ZhihuAdapter()];
+		addIcon(ZHIHU_IMPORTER_ICON, ZHIHU_IMPORTER_ICON_SVG);
 
 		const text = getText(this.settings.locale);
-		this.addRibbonIcon("download", text.ribbonLabel, () => {
+		this.addRibbonIcon(ZHIHU_IMPORTER_ICON, text.ribbonLabel, () => {
 			this.openImportModal();
 		});
 
